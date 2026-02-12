@@ -1,17 +1,51 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
+const sqlite3 = require("sqlite3").verbose();
 const { MercadoPagoConfig, Preference } = require("mercadopago");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔑 COLE AQUI SUA ACCESS TOKEN DE PRODUÇÃO
+/* ======================
+   MERCADO PAGO
+====================== */
 const client = new MercadoPagoConfig({
-  accessToken: "APP_USR-7425649175230181-020106-a1890d2c3534caa6d445823ec91a728c-145231534"
+  accessToken: process.env.MP_ACCESS_TOKEN
 });
 
-// Rota para criar pagamento
+/* ======================
+   SQLITE (LOCAL / TESTE)
+====================== */
+const dbPath = path.join(__dirname, "data", "database.sqlite");
+
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error("❌ Erro ao abrir SQLite:", err.message);
+  } else {
+    console.log("✅ SQLite conectado:", dbPath);
+  }
+});
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS mp_pedidos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id TEXT,
+    player_serial TEXT,
+    produto_tipo TEXT,
+    produto_nome TEXT,
+    quantidade INTEGER,
+    status TEXT,
+    data_compra DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+/* ======================
+   ROTAS
+====================== */
+
+// Criar pagamento
 app.post("/criar-pagamento", async (req, res) => {
   try {
     const preference = new Preference(client);
@@ -39,31 +73,21 @@ app.post("/criar-pagamento", async (req, res) => {
   }
 });
 
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
-
-const dbPath = "CAMINHO_COMPLETO_PARA/database.sqlite";
-
-const db = new sqlite3.Database(dbPath);
-
 // Webhook Mercado Pago
 app.post("/webhook", async (req, res) => {
   try {
-    const paymentId = req.body.data?.id;
+    const paymentId = req.body?.data?.id;
     if (!paymentId) return res.sendStatus(200);
 
-    // aqui você consulta o pagamento no Mercado Pago
-    // e verifica status === approved
-
-    // EXEMPLO (mockado):
+    // ⚠️ aqui depois vamos CONSULTAR o MP de verdade
     const status = "approved";
 
     if (status === "approved") {
       db.run(
         `
         INSERT INTO mp_pedidos
-        (payment_id, player_serial, produto_tipo, produto_nome, quantidade, status, data_compra)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        (payment_id, player_serial, produto_tipo, produto_nome, quantidade, status)
+        VALUES (?, ?, ?, ?, ?, ?)
         `,
         [
           paymentId,
@@ -83,7 +107,11 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+/* ======================
+   SERVER
+====================== */
+const PORT = process.env.PORT || 3000;
 
-app.listen(3000, () => {
-  console.log("🔥 Loja rodando em http://localhost:3000");
+app.listen(PORT, () => {
+  console.log(`🔥 Loja rodando na porta ${PORT}`);
 });
